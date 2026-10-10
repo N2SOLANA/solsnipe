@@ -25,6 +25,7 @@ export interface DenyEntry {
 }
 
 export const DENYLIST: DenyEntry[] = [
+  // scan-exempt-block: pattern definitions (start)
   {
     reason:
       "Transaction signing primitive — would enable real transaction submission (§2).",
@@ -77,6 +78,7 @@ export const DENYLIST: DenyEntry[] = [
     dependencySubstrings: [],
     urlSubstrings: [],
   },
+  // scan-exempt-block: pattern definitions (end)
 ];
 
 /** Hosts that outbound HTTP is allowed to reach. Everything else is rejected. */
@@ -87,19 +89,30 @@ export const NETWORK_ALLOWLIST: readonly string[] = [
 ] as const;
 
 /**
- * Scan exemptions (enforced by tests/safety-scan-sync coverage in db.test.ts).
+ * Scan exemptions (enforced by the "safety-scan sync" suite in tests/db.test.ts).
  *
  * Both scanners (scripts/safety-scan.mjs and runSafetySelfCheck) apply one
- * shared rule: strip `//` comments (they cannot execute anything), skip this
- * file (it DEFINES the banned patterns as data, not call sites), and skip
- * source lines carrying SCAN_EXEMPT_LINE_MARKER — used ONLY for secret-
- * redaction regexes in src/util/logger.ts (naming a secret concept in order
- * to redact it is defensive, not secret handling).
- * A sync test asserts both scanners honor the same exemptions and that the
- * marker appears nowhere else in src/.
+ * shared rule:
+ *  1. Drop source lines carrying SCAN_EXEMPT_LINE_MARKER — used ONLY for
+ *     secret-redaction regexes in src/util/logger.ts (naming a secret concept
+ *     in order to redact it is defensive, not secret handling).
+ *  2. Drop marked definition BLOCKS (lines from a line containing
+ *     SCAN_EXEMPT_BLOCK_START through the line containing
+ *     SCAN_EXEMPT_BLOCK_END, inclusive). Blocks may appear ONLY in files
+ *     listed in SCAN_EXEMPT_PATH_SUFFIXES — the sync test enforces this, so
+ *     the exemption cannot silently widen to other files.
+ *  3. Strip comments string-aware, then match DENYLIST patterns.
+ *
+ * Rationale: the denylist and both scanners must NAME the banned patterns to
+ * forbid them. Whole-file skips would hide real violations; block-scoping
+ * keeps every line outside the pattern-definition literal scannable.
  */
 export const SCAN_EXEMPT_PATH_SUFFIXES: readonly string[] = [
   "safety/denylist.ts",
+  "scripts/safety-scan.mjs",
 ];
 
 export const SCAN_EXEMPT_LINE_MARKER = "safety-scan-exempt(redaction)";
+
+export const SCAN_EXEMPT_BLOCK_START = "scan-exempt-block: pattern definitions (start)";
+export const SCAN_EXEMPT_BLOCK_END = "scan-exempt-block: pattern definitions (end)";

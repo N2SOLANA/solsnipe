@@ -3,7 +3,8 @@
 
 ## Current milestone
 M1 Foundation — COMPLETE (2026-10-10). `npm run verify` fully green.
-Next: M2 Market data + recorder.
+M2 Market data + recorder — IMPLEMENTED (2026-10-10), verify green; recorder
+start pending (step 4 of this run).
 
 ## Implemented
 - Probe: Dexscreener search + tokens endpoints, Solana RPC health, Jupiter Lite
@@ -19,6 +20,13 @@ Next: M2 Market data + recorder.
   shared scan rule), allowlisted `allowedFetch`, redacting JSON logger,
   validated zod config, migrations + WAL DB, startup self-check.
 - `npm run verify` = typecheck + lint + build + tests + safety-scan + e2e skeleton.
+- M2 (this run): Dexscreener provider (`src/providers/dexscreener.ts`, 518
+  lines: zod-normalized observations, RetryableError classification, deadline +
+  conservatively-rounded Decimals) + recorder (`src/recorder/`: anchored
+  setTimeout loop, gap rows, one-txn-per-poll store, SHUTDOWN heartbeat) +
+  snapshot migrations (`src/db/snapshots.ts`) + watchlist
+  (`config/watchlist.json`: WSOL/BONK/WIF/TRUMP) + hardened lifecycle script
+  (atomic O_EXCL pidfile, ps identity). 13 recorder tests.
 - Deps pinned (zod, decimal.js; @types/node, TS, vitest dev), lockfile committed,
   `npm audit`: 0 vulnerabilities.
 
@@ -34,7 +42,8 @@ Next: M2 Market data + recorder.
 
 ## Startup / stop commands
 - `npm run verify` — typecheck + lint + build + vitest + safety-scan + e2e ✅ green
-- `npm run recorder:start` / `recorder:stop` — stubs (refuse until M2 builds it)
+- `npm run recorder:start` / `recorder:stop` / `recorder:status` — hardened
+  lifecycle (atomic pidfile, identity check); start pending step 4 of this run
 
 ## Architecture & key files
 - `src/safety/executionMode.ts` — `EXECUTION_MODE = "PAPER"` (TBD M1)
@@ -50,6 +59,9 @@ Next: M2 Market data + recorder.
 - `npm run verify` (2026-10-10): GREEN — typecheck clean, lint clean,
   build clean, 16/16 tests pass (safety 11, db/scan-sync 5),
   safety-scan clean (5 deps), e2e skeleton PASS (self-check + migrate smoke)
+- `npm run verify` (2026-10-10, M2 run): GREEN — typecheck clean, lint clean
+  (17 files), build clean, 32/32 tests pass (safety 11, db 8, recorder 13),
+  safety-scan clean (18 files, 5 deps), e2e PASS (self-check + migrate smoke)
 - `npm audit`: 0 vulnerabilities
 
 ## Known defects
@@ -64,7 +76,7 @@ Next: M2 Market data + recorder.
 ## Unfinished / next
 1. `.env.example`, `.gitattributes`, `.claude/settings.json`
 2. Scaffold: package.json, tsconfig strict, vitest, safety files, db, verify skeleton
-3. M2: Dexscreener client + recorder, start recorder detached
+3. M2: commit + start recorder detached, confirm rows growing (this run, step 4)
 
 ## Recorder status
 Not built yet. Target: start during M2 ASAP.

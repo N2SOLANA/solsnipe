@@ -4,24 +4,85 @@
 //
 // NOTE: patterns mirror src/safety/denylist.ts (incl. exemptions:
 // safety/denylist.ts itself + lines with the marker below). A vitest sync
-// test (tests/safety-scan-sync.test.ts) fails if the two drift apart —
-// update both.
+// test ("safety-scan sync" suite in tests/db.test.ts) fails if the two
+// drift apart — update both.
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-const EXEMPT_PATH_SUFFIX = "safety/denylist.ts";
 const EXEMPT_LINE_MARKER = "safety-scan-exempt(redaction)";
+const EXEMPT_BLOCK_START = "scan-exempt-block: pattern definitions (start)";
+const EXEMPT_BLOCK_END = "scan-exempt-block: pattern definitions (end)";
+// Files allowed to carry exempt definition blocks (sync test enforces).
+const EXEMPT_BLOCK_FILES = ["safety/denylist.ts", "scripts/safety-scan.mjs"];
 
 const ROOT = new URL("..", import.meta.url);
 
-function* walkTs(dir) {
+function* walkScanned(dir) {
   for (const entry of readdirSync(dir)) {
     const full = join(String(dir), entry);
-    if (statSync(full).isDirectory()) yield* walkTs(full);
-    else if (full.endsWith(".ts")) yield full;
+    if (statSync(full).isDirectory()) {
+      yield* walkScanned(full);
+    } else if (full.endsWith(".ts")) {
+      yield full;
+    } else if (full.endsWith(".mjs")) {
+      // Recorder lifecycle / e2e operator files must meet the same boundary.
+      // Only files under src/ and scripts/ are scanned (audit C2).
+      const normalized = full.replace(/\\/g, "/");
+      if (normalized.includes("/src/") || normalized.includes("/scripts/")) yield full;
+    }
   }
 }
 
+/**
+ * String-aware comment stripper. MUST stay equivalent to
+ * src/safety/stripComments.ts (pinned by tests/db.test.ts): `//` inside
+ * string literals (e.g. "https://...") is NOT a comment — naive
+ * line.replace(/\/\/.*$/,"") blinds banned-URL matching (audit C1).
+ */
+function stripComments(source) {
+  let out = "";
+  let i = 0;
+  const n = source.length;
+  let quote = null;
+  while (i < n) {
+    const c = source[i];
+    if (quote !== null) {
+      out += c;
+      if (c === "\\") {
+        if (i + 1 < n) out += source[i + 1];
+        i += 2;
+        continue;
+      }
+      if (c === quote) quote = null;
+      i += 1;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === "`") {
+      quote = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "/") {
+      while (i < n && source[i] !== "\n") i += 1;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "*") {
+      i += 2;
+      while (i < n && !(source[i] === "*" && source[i + 1] === "/")) {
+        if (source[i] === "\n") out += "\n";
+        i += 1;
+      }
+      i += 2;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
+// scan-exempt-block: pattern definitions (start)
 const SOURCE_PATTERNS = [
   /\bsignTransaction\b/,
   /\bsignAllTransactions\b/,
@@ -55,22 +116,36 @@ const BANNED_DEP_SUBSTRINGS = [
   "bip39",
   "ed25519-hd-key",
 ];
+// scan-exempt-block: pattern definitions (end)
 
 let failures = 0;
-const srcDir = new URL("../src", import.meta.url);
-if (existsSync(srcDir)) {
-  for (const file of walkTs(srcDir.pathname)) {
+let filesScanned = 0;
+const scanRoots = [new URL("../src", import.meta.url), new URL("../scripts", import.meta.url)];
+for (const root of scanRoots) {
+  if (!existsSync(root)) continue;
+  for (const file of walkScanned(root.pathname)) {
     const normalized = file.replace(/\\/g, "/");
-    if (normalized.endsWith(EXEMPT_PATH_SUFFIX)) continue; // pattern definitions, not call sites
+    filesScanned += 1;
     const text = readFileSync(file, "utf8");
-    // Shared rule with runSafetySelfCheck: exempt marked redaction-pattern
-    // lines FIRST (the marker lives in a trailing comment), then strip the
-    // remaining `//` comments (they cannot execute anything).
-    const scannable = text
-      .split("\n")
-      .filter((line) => !line.includes(EXEMPT_LINE_MARKER))
-      .map((line) => line.replace(/\/\/.*$/, ""))
-      .join("\n");
+    // Shared rule with runSafetySelfCheck (see toScannableText): exempt
+    // marked lines, drop marked definition blocks (only in allowlisted
+    // files), then strip comments string-aware.
+    const blockAllowed = EXEMPT_BLOCK_FILES.some((s) => normalized.endsWith(s));
+    const kept = [];
+    let inBlock = false;
+    for (const line of text.split("\n")) {
+      if (blockAllowed && line.includes(EXEMPT_BLOCK_START)) {
+        inBlock = true;
+        continue;
+      }
+      if (inBlock) {
+        if (line.includes(EXEMPT_BLOCK_END)) inBlock = false;
+        continue;
+      }
+      if (line.includes(EXEMPT_LINE_MARKER)) continue;
+      kept.push(line);
+    }
+    const scannable = stripComments(kept.join("\n"));
     for (const pattern of SOURCE_PATTERNS) {
       pattern.lastIndex = 0;
       if (pattern.test(scannable)) {
@@ -103,4 +178,4 @@ if (failures > 0) {
   console.error(`safety-scan: ${failures} violation(s) — PAPER-ONLY boundary breached`);
   process.exit(1);
 }
-console.log(`safety-scan: clean (${deps.length} deps checked)`);
+console.log(`safety-scan: clean (${filesScanned} files, ${deps.length} deps checked)`);

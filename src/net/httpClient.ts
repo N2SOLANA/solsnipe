@@ -30,6 +30,7 @@ export function assertAllowedUrl(url: string | URL): URL {
 
 export interface FetchOptions extends RequestInit {
   timeoutMs?: number;
+  // signal?: inherited from RequestInit (AbortSignal | null)
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -40,6 +41,12 @@ export async function allowedFetch(
   options: FetchOptions = {},
 ): Promise<Response> {
   const parsed = assertAllowedUrl(url);
-  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...init } = options;
-  return fetch(parsed, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: callerSignal, ...init } = options;
+  // Compose caller abort (e.g. recorder shutdown) with the timeout: either aborts.
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal =
+    callerSignal === undefined || callerSignal === null
+      ? timeoutSignal
+      : AbortSignal.any([callerSignal, timeoutSignal]);
+  return fetch(parsed, { ...init, signal });
 }

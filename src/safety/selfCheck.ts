@@ -7,9 +7,40 @@ import { EXECUTION_MODE, assertPaperMode } from "../safety/executionMode.js";
 import {
   DENYLIST,
   NETWORK_ALLOWLIST,
+  SCAN_EXEMPT_BLOCK_END,
+  SCAN_EXEMPT_BLOCK_START,
   SCAN_EXEMPT_LINE_MARKER,
   SCAN_EXEMPT_PATH_SUFFIXES,
 } from "../safety/denylist.js";
+import { stripComments } from "../safety/stripComments.js";
+
+/**
+ * Shared scannable-text rule (mirrored by scripts/safety-scan.mjs):
+ * drop exempt lines, drop marked definition blocks (only in allowlisted
+ * files), then strip comments string-aware.
+ */
+export function toScannableText(path: string, text: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const blockAllowed = SCAN_EXEMPT_PATH_SUFFIXES.some((suffix) =>
+    normalized.endsWith(suffix),
+  );
+  const lines = text.split("\n");
+  const kept: string[] = [];
+  let inBlock = false;
+  for (const line of lines) {
+    if (blockAllowed && line.includes(SCAN_EXEMPT_BLOCK_START)) {
+      inBlock = true;
+      continue;
+    }
+    if (inBlock) {
+      if (line.includes(SCAN_EXEMPT_BLOCK_END)) inBlock = false;
+      continue;
+    }
+    if (line.includes(SCAN_EXEMPT_LINE_MARKER)) continue;
+    kept.push(line);
+  }
+  return stripComments(kept.join("\n"));
+}
 
 export interface SelfCheckResult {
   ok: boolean;
@@ -52,20 +83,10 @@ export function runSafetySelfCheck(
   });
 
   // 3. Source scan (signing primitives, secret handling, swap endpoints).
-  // Exempts the denylist definition itself and marked redaction-pattern lines.
+  // Exemption = marked definition blocks + marked lines only (never whole files).
   const sourceHits: string[] = [];
   for (const file of sourceFiles) {
-    const normalized = file.path.replace(/\\/g, "/");
-    if (SCAN_EXEMPT_PATH_SUFFIXES.some((suffix) => normalized.endsWith(suffix))) {
-      continue;
-    }
-    const scannableLines = file.text
-      .split("\n")
-      // Shared rule with scripts/safety-scan.mjs: exempt marked lines first
-      // (marker lives in a trailing comment), then strip `//` comments.
-      .filter((line) => !line.includes(SCAN_EXEMPT_LINE_MARKER))
-      .map((line) => line.replace(/\/\/.*$/, ""));
-    const scannable = scannableLines.join("\n");
+    const scannable = toScannableText(file.path, file.text);
     for (const entry of DENYLIST) {
       for (const pattern of entry.sourcePatterns) {
         pattern.lastIndex = 0;

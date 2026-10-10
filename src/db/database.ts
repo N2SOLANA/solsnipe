@@ -32,14 +32,19 @@ export const MIGRATIONS: Migration[] = [
   },
 ];
 
-/** Open a DB with WAL + busy timeout and apply pending migrations. */
-export function openDatabase(path: string): DatabaseSync {
+/** Open a DB with WAL + busy timeout and apply the given migrations (forward-only).
+ *
+ * The migrations argument is REQUIRED (no default): defaulting to the app set
+ * once caused the recorder to build the wrong tables into the snapshot file.
+ * Call sites must state which database they are opening.
+ */
+export function openDatabase(path: string, migrations: Migration[]): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.prepare("PRAGMA journal_mode=WAL").get();
   db.prepare("PRAGMA busy_timeout=5000").get();
   db.prepare("PRAGMA foreign_keys=ON").get();
-  migrate(db);
+  migrate(db, migrations);
   return db;
 }
 
@@ -54,14 +59,35 @@ function currentVersion(db: DatabaseSync): number {
   return row.v ?? 0;
 }
 
-export function migrate(db: DatabaseSync): void {
+export function migrate(db: DatabaseSync, migrations: Migration[] = MIGRATIONS): void {
+  // Guard: versions must be sorted and unique, else a duplicate silently skips.
+  for (let i = 1; i < migrations.length; i++) {
+    const prev = migrations[i - 1];
+    const cur = migrations[i];
+    if (prev === undefined || cur === undefined || cur.version <= prev.version) {
+      throw new Error(`migrations must be strictly increasing (index ${i})`);
+    }
+  }
   const current = currentVersion(db);
-  for (const m of MIGRATIONS) {
+  for (const m of migrations) {
     if (m.version <= current) continue;
-    db.exec(m.sql);
-    db.prepare("INSERT INTO schema_version (version, applied_at) VALUES (?, ?)").run(
-      m.version,
-      Date.now(),
-    );
+    // Atomic per version: a crash between DDL and version-row leaves either
+    // the whole version applied or none (re-runnable on next open).
+    db.exec("BEGIN");
+    try {
+      db.exec(m.sql);
+      db.prepare("INSERT INTO schema_version (version, applied_at) VALUES (?, ?)").run(
+        m.version,
+        Date.now(),
+      );
+      db.exec("COMMIT");
+    } catch (err) {
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // already rolled back / no transaction — report the original error
+      }
+      throw err;
+    }
   }
 }
