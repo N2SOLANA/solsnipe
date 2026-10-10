@@ -160,16 +160,15 @@ describe("dashboard view-models equal DB state", () => {
   });
 
   it("portfolio/performance are explicit empty states, not zeros", () => {
-    expect(buildPortfolioView()).toEqual({
-      panel: "portfolio",
-      empty: true,
-      reason: expect.stringContaining("not built yet"),
-    });
-    expect(buildPerformanceView()).toEqual({
-      panel: "performance",
-      empty: true,
-      reason: expect.stringContaining("fabricated"),
-    });
+    const portfolio = buildPortfolioView();
+    expect(portfolio.empty).toBe(true);
+    expect(portfolio.reason).toContain("no fills persisted");
+    expect(portfolio.cashLamports).toBeNull();
+    expect(portfolio.openPositions).toEqual([]);
+    const performance = buildPerformanceView();
+    expect(performance.empty).toBe(true);
+    expect(performance.reason).toContain("fabricated");
+    expect(performance.trades).toBe(0);
     const { dir, db } = seedDb();
     try {
       const view = buildDashboard(db, {
@@ -211,7 +210,7 @@ describe("dashboard view-models equal DB state", () => {
       expect(read).toContain("0.000123"); // real seeded price
       expect(read).toContain("123456.78"); // real seeded liquidity
       expect(read).toContain("NETWORK_ERROR"); // disclosed gap
-      expect(read).toContain("not built yet"); // portfolio empty state
+      expect(read).toContain("no fills persisted"); // portfolio empty state
       expect(read).not.toContain("http://");
       expect(read).not.toContain("https://");
     } finally {

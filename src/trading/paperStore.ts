@@ -289,6 +289,52 @@ export class PaperStore {
   countOrders(): number {
     return Number((this.db.prepare("SELECT COUNT(*) AS n FROM sim_orders").get() as { n: number }).n);
   }
+
+  getDaemonCursor(): number {
+    const row = this.db.prepare("SELECT last_observation_id AS v FROM sim_daemon_state WHERE id=1").get() as { v: number } | undefined;
+    return row?.v ?? 0;
+  }
+
+  /**
+   * Atomically advance the daemon cursor and append one idempotent audit event.
+   * INSERT OR IGNORE makes repeat polls/restarts converge to one event row.
+   */
+  appendDaemonEvent(event: {
+    observationId: number;
+    observedAt: number;
+    mint: string;
+    pairAddress: string;
+    scannerOutcome: string;
+    riskAllowed: boolean;
+    action: "BLOCKED_RISK" | "BLOCKED_SCAN" | "ORDER_PROPOSED" | "ERROR";
+    detail: string;
+    createdAt: number;
+  }): void {
+    assertPaperMode();
+    this.db.exec("BEGIN");
+    try {
+      this.db.prepare(`
+        INSERT OR IGNORE INTO sim_daemon_events
+          (observation_id, observed_at, mint, pair_address, scanner_outcome, risk_allowed, action, detail, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        event.observationId, event.observedAt, event.mint, event.pairAddress,
+        event.scannerOutcome, event.riskAllowed ? 1 : 0, event.action,
+        event.detail.slice(0, 1000), event.createdAt,
+      );
+      this.db.prepare("UPDATE sim_daemon_state SET last_observation_id = MAX(last_observation_id, ?), updated_at = ? WHERE id=1").run(
+        event.observationId, event.createdAt,
+      );
+      this.db.exec("COMMIT");
+    } catch (err) {
+      try { this.db.exec("ROLLBACK"); } catch { /* preserve original */ }
+      throw err;
+    }
+  }
+
+  countDaemonEvents(): number {
+    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM sim_daemon_events").get() as { n: number }).n);
+  }
 }
 
 export type { OrderStore };

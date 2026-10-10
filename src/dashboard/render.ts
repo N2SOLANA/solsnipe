@@ -9,7 +9,9 @@
  * trade history any chart would be fabricated (§19, §30).
  */
 
-import type { ActivityView, DashboardView, HealthView, ScannerView } from "./views.js";
+import type {
+  ActivityView, DashboardView, HealthView, ScannerView, PortfolioPanel, PerformancePanel,
+} from "./views.js";
 
 function esc(value: string | number | null | undefined): string {
   if (value === null || value === undefined) return "<span class=\"na\">n/a</span>";
@@ -135,6 +137,37 @@ function renderActivity(view: ActivityView): string {
 <h3>Fetch events</h3>${fetches}<h3>Heartbeats</h3>${beats}</section>`;
 }
 
+function renderPortfolio(p: PortfolioPanel): string {
+  if (p.empty) {
+    return `<section><h2>D. Portfolio overview</h2><p class="empty">${esc(p.reason ?? "No paper state.")}</p></section>`;
+  }
+  const pos =
+    p.openPositions.length === 0
+      ? `<p class="empty">No open simulated positions (all cash).</p>`
+      : `<table><thead><tr><th>Token</th><th class="num">Qty (base)</th><th class="num">Cost (lamports)</th><th class="num">Mark</th><th class="num">Value</th><th class="num">Unrealized</th></tr></thead><tbody>${p.openPositions
+          .map(
+            (x) => `<tr><td>${esc(x.token.slice(0, 12))}…</td><td class="num">${esc(x.qtyBaseUnits)}</td>
+<td class="num">${esc(x.costBasisLamports)}</td><td class="num">${x.markPrice === null ? '<span class="na">no mark</span>' : esc(x.markPrice)}</td>
+<td class="num">${x.marketValueLamports === null ? '<span class="na">—</span>' : esc(x.marketValueLamports)}</td>
+<td class="num">${x.unrealizedPnlLamports === null ? '<span class="na">—</span>' : esc(x.unrealizedPnlLamports)}</td></tr>`,
+          )
+          .join("\n")}</tbody></table>`;
+  const stop = p.emergencyStop ? `<p class="warn">EMERGENCY STOP active — new entries blocked.</p>` : "";
+  return `<section><h2>D. Portfolio overview</h2>${stop}
+<p>Start: <span class="num">${esc(p.startLamports ?? "—")}</span> lamports · Cash: <span class="num">${esc(p.cashLamports ?? "—")}</span> · Realized: <span class="num">${esc(p.realizedPnlLamports ?? "—")}</span> · Equity: <span class="num">${esc(p.equityLamports ?? "—")}</span></p>
+<p class="note">Simulated (paper) balances from the local app database. Valuations use last-recorded marks, shown per position.</p>
+${pos}</section>`;
+}
+
+function renderPerformance(p: PerformancePanel): string {
+  if (p.empty) {
+    return `<section><h2>E. Performance analytics</h2><p class="empty">${esc(p.reason ?? "No replay computed.")}</p></section>`;
+  }
+  return `<section><h2>E. Performance analytics (replay, simulated)</h2>
+<p>Trades: <span class="num">${String(p.trades)}</span> · Net P&amp;L: <span class="num">${esc(p.netPnlLamports ?? "—")}</span> lamports · Verdict: <strong>${esc(p.verdict ?? "—")}</strong></p>
+<p class="note">Window ${p.windowStart === null ? "—" : esc(new Date(p.windowStart).toISOString())} → ${p.windowEnd === null ? "—" : esc(new Date(p.windowEnd).toISOString())}. Replay of recorded snapshots with modeled costs — not evidence of an edge unless the verdict says otherwise.</p></section>`;
+}
+
 export function renderSnapshotHtml(d: DashboardView): string {
   const now = d.generatedAt;
   return `<!doctype html>
@@ -154,10 +187,10 @@ section{margin-bottom:24px}
 <h1>SOLSNIPE — dashboard snapshot (PAPER ONLY)</h1>
 <p class="note">Generated ${esc(new Date(now).toISOString())} from the local snapshot DB (read-only). Prices shown are last-recorded observations with explicit freshness — never live quotes.</p>
 ${renderScanner(d.scanner, now)}
-<section><h2>B. Candidate research</h2><p class="empty">Per-rule evidence and risk checks are not built yet (Milestones 3–4). No scanner verdicts (ACCEPT/REJECT/REVIEW) exist to display.</p></section>
-<section><h2>C. Paper-trading terminal</h2><p class="empty">No orders yet — the paper-trading engine (Milestone 4) is not built. There is no order state machine to display.</p></section>
-<section><h2>D. Portfolio overview</h2><p class="empty">${esc(d.portfolio.reason)}</p></section>
-<section><h2>E. Performance analytics</h2><p class="empty">${esc(d.performance.reason)}</p></section>
+<section><h2>B. Candidate research</h2><p class="empty">Live per-observation verdicts are not persisted yet — scanner verdicts (ACCEPT/REJECT/REVIEW) exist in tests and the replay path, but the recorder stores raw observations only. Wiring verdict persistence is a queued improvement.</p></section>
+<section><h2>C. Paper-trading terminal</h2><p class="empty">No live order stream yet — persisted fills appear in panel D once the paper engine writes to the app database. Order history persistence is a queued improvement.</p></section>
+${renderPortfolio(d.portfolio)}
+${renderPerformance(d.performance)}
 ${renderHealth(d.health, now)}
 ${renderActivity(d.activity)}
 </body></html>

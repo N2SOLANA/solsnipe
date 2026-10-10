@@ -13,6 +13,11 @@
 import { z } from "zod";
 import { Decimal } from "decimal.js";
 import type { NormalizedObservation } from "../providers/types.js";
+import {
+  isClassicTokenProgram,
+  isToken2022Program,
+  type MintInfo,
+} from "./solanaRpc.js";
 
 export const RiskStatusSchema = z.enum(["PASS", "FAIL", "UNKNOWN", "NOT_SUPPORTED"]);
 export type RiskStatus = z.infer<typeof RiskStatusSchema>;
@@ -174,36 +179,108 @@ function rpcStub(
   return check(checkId, "NOT_SUPPORTED", obs, evidence, limitations);
 }
 
-/** §12.1: needs a mint-account read (getAccountInfo). No RPC in M3. */
-export function checkMintAuthority(obs: NormalizedObservation): RiskCheck {
-  return rpcStub(
+/** §12.1: mint authority from verified mint-account evidence. */
+export function checkMintAuthority(
+  obs: NormalizedObservation,
+  mintInfo?: MintInfo | null,
+): RiskCheck {
+  if (mintInfo === undefined || mintInfo === null) {
+    return rpcStub(
+      "risk.mint-authority",
+      obs,
+      "Mint authority unverified — no mint-account read available.",
+      "Requires Solana JSON-RPC getAccountInfo on the mint (authorized read-only source, §12.1). " +
+        "Until then, authority may be live and mintable; treat as unknown risk.",
+    );
+  }
+  if (mintInfo.mintAuthority === null) {
+    return check(
+      "risk.mint-authority",
+      "PASS",
+      obs,
+      `Mint authority is null (revoked, fixed supply) at slot ${mintInfo.slot}.`,
+      "Evidence is a point-in-time mint-account read; authority cannot be re-added once null, but the read itself could be stale.",
+    );
+  }
+  return check(
     "risk.mint-authority",
+    "FAIL",
     obs,
-    "Mint authority unverified — no mint-account read performed in M3.",
-    "Requires Solana JSON-RPC getAccountInfo on the mint (authorized read-only source, §12.1). " +
-      "Until then, authority may be live and mintable; treat as unknown risk.",
+    `Mint authority is live: ${mintInfo.mintAuthority.slice(0, 12)}… — supply can be inflated.`,
+    "A live authority may be a multisig with limited powers, but the evidence supports FAIL under the conservative policy.",
   );
 }
 
-/** §12.1: needs a mint-account read. No RPC in M3. */
-export function checkFreezeAuthority(obs: NormalizedObservation): RiskCheck {
-  return rpcStub(
+/** §12.1: freeze authority from verified mint-account evidence. */
+export function checkFreezeAuthority(
+  obs: NormalizedObservation,
+  mintInfo?: MintInfo | null,
+): RiskCheck {
+  if (mintInfo === undefined || mintInfo === null) {
+    return rpcStub(
+      "risk.freeze-authority",
+      obs,
+      "Freeze authority unverified — no mint-account read available.",
+      "Requires Solana JSON-RPC getAccountInfo on the mint (§12.1). " +
+        "A live freeze authority can block selling; treat as unknown risk.",
+    );
+  }
+  if (mintInfo.freezeAuthority === null) {
+    return check(
+      "risk.freeze-authority",
+      "PASS",
+      obs,
+      `Freeze authority is null (revoked) at slot ${mintInfo.slot} — accounts cannot be frozen.`,
+      "Point-in-time evidence; revocation is irreversible so staleness only matters for the FAIL direction.",
+    );
+  }
+  return check(
     "risk.freeze-authority",
+    "FAIL",
     obs,
-    "Freeze authority unverified — no mint-account read performed in M3.",
-    "Requires Solana JSON-RPC getAccountInfo on the mint (§12.1). " +
-      "A live freeze authority can block selling; treat as unknown risk.",
+    `Freeze authority is live: ${mintInfo.freezeAuthority.slice(0, 12)}… — holder accounts can be frozen, blocking exit.`,
+    "Conservative policy treats any live freeze authority as entry-blocking.",
   );
 }
 
-/** §12.1: needs program id + extension parsing. No RPC in M3. */
-export function checkTokenExtensions(obs: NormalizedObservation): RiskCheck {
-  return rpcStub(
+/** §12.1: token program from the mint-account owner. */
+export function checkTokenExtensions(
+  obs: NormalizedObservation,
+  mintInfo?: MintInfo | null,
+): RiskCheck {
+  if (mintInfo === undefined || mintInfo === null) {
+    return rpcStub(
+      "risk.token-extensions",
+      obs,
+      "Token program and extensions unverified — Dexscreener does not report them.",
+      "Requires mint-account owner/program id plus Token-2022 extension parsing (§12.1). " +
+        "Policy: a transfer-restricting extension is FAIL once evidence exists.",
+    );
+  }
+  if (isClassicTokenProgram(mintInfo.programId)) {
+    return check(
+      "risk.token-extensions",
+      "PASS",
+      obs,
+      "Classic SPL Token program (no extensions possible).",
+      "Owner check only; assumes the well-known program id is not spoofed (program ids are consensus addresses).",
+    );
+  }
+  if (isToken2022Program(mintInfo.programId)) {
+    return check(
+      "risk.token-extensions",
+      "UNKNOWN",
+      obs,
+      "Token-2022 program: extension parsing not yet implemented — transfer-fee/hook/permanent-delegate status unknown.",
+      "Requires parsing extension TLV data from the mint account (§12.1). Until parsed, entry stays blocked; a restrictive extension would be FAIL.",
+    );
+  }
+  return check(
     "risk.token-extensions",
+    "FAIL",
     obs,
-    "Token program and extensions unverified — Dexscreener does not report them.",
-    "Requires mint-account owner/program id plus Token-2022 extension parsing (§12.1). " +
-      "Policy: a transfer-restricting extension is FAIL once evidence exists.",
+    `Unknown token program owner: ${mintInfo.programId.slice(0, 12)}… — transfer semantics unverifiable.`,
+    "Only the two known SPL programs are accepted; anything else fails closed.",
   );
 }
 
@@ -243,9 +320,11 @@ export function checkSellability(obs: NormalizedObservation): RiskCheck {
 export interface RiskOptions {
   minLiquidityUsd?: string;
   minPairAgeMs?: number;
+  /** Verified mint-account evidence (none = RPC checks stay NOT_SUPPORTED). */
+  mintInfo?: MintInfo | null;
 }
 
-/** Run all eight M3 checks in a fixed order. */
+/** Run all eight checks in a fixed order; mintInfo wires the RPC-backed three. */
 export function runRiskChecks(
   obs: NormalizedObservation,
   checkedAt: number,
@@ -256,9 +335,9 @@ export function runRiskChecks(
   const checks: RiskCheck[] = [
     checkLiquidityDepth(obs, minLiquidityUsd),
     checkPairAge(obs, minPairAgeMs),
-    checkMintAuthority(obs),
-    checkFreezeAuthority(obs),
-    checkTokenExtensions(obs),
+    checkMintAuthority(obs, options.mintInfo),
+    checkFreezeAuthority(obs, options.mintInfo),
+    checkTokenExtensions(obs, options.mintInfo),
     checkLiquidityLock(obs),
     checkHolderConcentration(obs),
     checkSellability(obs),

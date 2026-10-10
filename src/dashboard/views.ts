@@ -8,6 +8,7 @@
  * are no positions, balances, or P&L to show, and we say so instead of zeros.
  */
 import type { DatabaseSync } from "node:sqlite";
+import { Decimal } from "decimal.js";
 import { EXECUTION_MODE } from "../safety/executionMode.js";
 import type { SelfCheckResult } from "../safety/selfCheck.js";
 
@@ -126,10 +127,43 @@ export interface ActivityView {
   note: string;
 }
 
-export interface EmptyPanel {
-  panel: "portfolio" | "performance";
-  empty: true;
-  reason: string;
+export interface PortfolioPosition {
+  token: string;
+  qtyBaseUnits: string;
+  costBasisLamports: string;
+  markPrice: string | null;
+  marketValueLamports: string | null;
+  unrealizedPnlLamports: string | null;
+}
+
+export interface PortfolioPanel {
+  panel: "portfolio";
+  empty: boolean;
+  reason: string | null;
+  startLamports: string | null;
+  cashLamports: string | null;
+  realizedPnlLamports: string | null;
+  equityLamports: string | null;
+  openPositions: PortfolioPosition[];
+  emergencyStop: boolean;
+}
+
+export interface PerformancePanel {
+  panel: "performance";
+  empty: boolean;
+  reason: string | null;
+  trades: number;
+  netPnlLamports: string | null;
+  verdict: string | null;
+  windowStart: number | null;
+  windowEnd: number | null;
+}
+
+export interface MarketHistoryPoint {
+  mint: string;
+  pairAddress: string;
+  observedAt: number;
+  priceUsd: string;
 }
 
 export interface DashboardView {
@@ -137,8 +171,10 @@ export interface DashboardView {
   scanner: ScannerView;
   health: HealthView;
   activity: ActivityView;
-  portfolio: EmptyPanel;
-  performance: EmptyPanel;
+  portfolio: PortfolioPanel;
+  performance: PerformancePanel;
+  /** Recorded price history only — no interpolation or fabricated points. */
+  marketHistory: MarketHistoryPoint[];
 }
 
 export interface BuildOptions {
@@ -147,6 +183,10 @@ export interface BuildOptions {
   selfCheck: SelfCheckResult;
   activityLimit?: number;
   scannerLimit?: number;
+  /** Paper state from the app DB (absent = honest empty portfolio panel). */
+  paper?: PaperState | undefined;
+  /** Replay summary computed over the snapshot window (absent = honest empty). */
+  replay?: ReplaySummary | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -401,26 +441,128 @@ export function buildActivityView(
   };
 }
 
-/** Panel D: no engine, no positions — say so instead of zeros. */
-export function buildPortfolioView(): EmptyPanel {
+export interface PaperState {
+  startLamports: bigint;
+  cashLamports: bigint;
+  realizedPnlLamports: bigint;
+  emergencyStop: boolean;
+  positions: { token: string; qty: bigint; cost: bigint }[];
+  /** Latest mark price per token (decimal string) for valuation. */
+  marks: Record<string, string>;
+}
+
+export interface ReplaySummary {
+  trades: number;
+  netPnlLamports: string;
+  verdict: string;
+  windowStart: number;
+  windowEnd: number;
+}
+
+/** Panel D: real paper state when present, honest empty when absent. */
+export function buildPortfolioView(paper?: PaperState): PortfolioPanel {
+  if (paper === undefined) {
+    return {
+      panel: "portfolio",
+      empty: true,
+      reason:
+        "No paper-trading state recorded yet (no fills persisted to the app database). " +
+        "This panel intentionally shows nothing instead of zeros.",
+      startLamports: null,
+      cashLamports: null,
+      realizedPnlLamports: null,
+      equityLamports: null,
+      openPositions: [],
+      emergencyStop: false,
+    };
+  }
+  const openPositions: PortfolioPosition[] = paper.positions.map((p) => {
+    const mark = paper.marks[p.token] ?? null;
+    let marketValue: string | null = null;
+    let unrealized: string | null = null;
+    if (mark !== null) {
+      try {
+        const mv =
+          BigInt(new Decimal(mark).mul(p.qty.toString()).toDecimalPlaces(0, Decimal.ROUND_FLOOR).toString());
+        marketValue = mv.toString();
+        unrealized = (mv - p.cost).toString();
+      } catch {
+        marketValue = null;
+      }
+    }
+    return {
+      token: p.token,
+      qtyBaseUnits: p.qty.toString(),
+      costBasisLamports: p.cost.toString(),
+      markPrice: mark,
+      marketValueLamports: marketValue,
+      unrealizedPnlLamports: unrealized,
+    };
+  });
+  const equity = openPositions.reduce(
+    (acc, p) => acc + (p.marketValueLamports === null ? 0n : BigInt(p.marketValueLamports)),
+    paper.cashLamports,
+  );
   return {
     panel: "portfolio",
-    empty: true,
-    reason:
-      "Paper-trading engine not built yet (Milestone 4): no virtual positions, " +
-      "balances, fills, or P&L exist. This panel intentionally shows nothing instead of zeros.",
+    empty: false,
+    reason: null,
+    startLamports: paper.startLamports.toString(),
+    cashLamports: paper.cashLamports.toString(),
+    realizedPnlLamports: paper.realizedPnlLamports.toString(),
+    equityLamports: equity.toString(),
+    openPositions,
+    emergencyStop: paper.emergencyStop,
   };
 }
 
-/** Panel E: no trades, no history — any chart here would be fabricated. */
-export function buildPerformanceView(): EmptyPanel {
+/** Panel E: replay summary when computed, honest empty otherwise. */
+export function buildPerformanceView(replay?: ReplaySummary): PerformancePanel {
+  if (replay === undefined) {
+    return {
+      panel: "performance",
+      empty: true,
+      reason:
+        "No replay computed yet. Performance appears here after a backtest run — " +
+        "with no trades, any chart would be fabricated, so there is none.",
+      trades: 0,
+      netPnlLamports: null,
+      verdict: null,
+      windowStart: null,
+      windowEnd: null,
+    };
+  }
   return {
     panel: "performance",
-    empty: true,
-    reason:
-      "Performance analytics need closed paper trades (Milestone 4) and replay " +
-      "history (Milestone 6). With no trades yet, any chart here would be fabricated — so there is none.",
+    empty: false,
+    reason: null,
+    trades: replay.trades,
+    netPnlLamports: replay.netPnlLamports,
+    verdict: replay.verdict,
+    windowStart: replay.windowStart,
+    windowEnd: replay.windowEnd,
   };
+}
+
+export function readMarketHistory(db: DatabaseSync, limit = 2000): MarketHistoryPoint[] {
+  // Daily first-recorded USD price per pair, actual observations only.
+  return db.prepare(
+    `WITH ranked AS (
+       SELECT mint, pair_address, observed_at, price_usd,
+              ROW_NUMBER() OVER (
+                PARTITION BY pair_address, date(observed_at / 1000, 'unixepoch')
+                ORDER BY observed_at ASC
+              ) AS rn
+       FROM observations
+       WHERE price_usd IS NOT NULL
+     )
+     SELECT mint, pair_address AS pairAddress, observed_at AS observedAt,
+            price_usd AS priceUsd
+     FROM ranked
+     WHERE rn = 1
+     ORDER BY observed_at ASC
+     LIMIT ?`,
+  ).all(limit) as unknown as MarketHistoryPoint[];
 }
 
 export function buildDashboard(db: DatabaseSync, opts: BuildOptions): DashboardView {
@@ -441,8 +583,9 @@ export function buildDashboard(db: DatabaseSync, opts: BuildOptions): DashboardV
       opts.staleAfterMs,
     ),
     activity: buildActivityView(readFetchEvents(db, activityLimit), readHeartbeats(db, activityLimit), opts.nowMs),
-    portfolio: buildPortfolioView(),
-    performance: buildPerformanceView(),
+    portfolio: buildPortfolioView(opts.paper),
+    performance: buildPerformanceView(opts.replay),
+    marketHistory: readMarketHistory(db),
   };
 }
 
@@ -490,5 +633,6 @@ export function emptyDashboard(
     },
     portfolio: buildPortfolioView(),
     performance: buildPerformanceView(),
+    marketHistory: [],
   };
 }
