@@ -287,16 +287,18 @@ export function evalAllRules(
 }
 
 /**
- * Outcome derivation (§10): REJECT when any required rule fails, else REVIEW
- * when any required rule is unknown/incomplete, else ACCEPT. An "unknown"
- * can never produce ACCEPT — enforced here, not just by convention.
+ * Outcome derivation (§10): REJECT when ANY evaluated rule fails (a known-bad
+ * signal is never ACCEPT, even outside the caller's required subset —
+ * narrowing requiredIds cannot hide a failure), else REVIEW when any required
+ * rule is unknown/incomplete, else ACCEPT. An "unknown" can never produce
+ * ACCEPT — enforced here, not just by convention.
  */
 export function deriveOutcome(
   rules: RuleResult[],
   requiredIds: readonly string[] = SCANNER_RULE_IDS,
 ): ScannerOutcome {
+  if (rules.some((r) => r.verdict === "fail")) return "REJECT";
   const required = rules.filter((r) => requiredIds.includes(r.ruleId));
-  if (required.some((r) => r.verdict === "fail")) return "REJECT";
   if (required.some((r) => r.verdict === "unknown")) return "REVIEW";
   // Vacuous acceptance is forbidden: every required rule must be present
   // and passing before ACCEPT is possible.

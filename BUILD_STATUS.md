@@ -4,7 +4,7 @@
 ## Current milestone
 M3 Scanner + risk + M4 paper trading + dashboard scaffold — COMPLETE
 (2026-10-11). `npm run verify` fully green (85/85). Recorder RUNNING.
-Next: M5 adversarial verification, M6 backtest replay.
+Next: on-chain RPC evidence, M6 backtest replay, M7 dashboard completion.
 
 ## Implemented
 - Probe: Dexscreener search + tokens endpoints, Solana RPC health, Jupiter Lite

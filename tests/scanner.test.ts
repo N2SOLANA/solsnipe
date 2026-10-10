@@ -87,4 +87,28 @@ describe("scanner (fixture-driven)", () => {
   it("vacuous ACCEPT is impossible (zero rules → REVIEW)", () => {
     expect(deriveOutcome([])).toBe("REVIEW");
   });
+
+  it("a fail outside the required subset still REJECTs (M5)", () => {
+    const base = bonkObservations()[0] as NormalizedObservation;
+    const rich = {
+      ...base,
+      liquidityUsd: "100000",
+      volumeH24: "100000",
+      txnsH24Buys: 100,
+      txnsH24Sells: 100,
+      pairCreatedAt: NOW - 31 * 60_000,
+      priceChangeH24: "1.5",
+      observedAt: NOW - 1_000,
+    } as NormalizedObservation;
+    const rules = evalAllRules(rich, DEFAULT_SCANNER_THRESHOLDS, NOW);
+    // Sanity: full set ACCEPTs.
+    expect(deriveOutcome(rules)).toBe("ACCEPT");
+    // Narrow the required set to exclude liquidity — then break liquidity.
+    // The failure must still surface as REJECT, not a narrowed ACCEPT.
+    const subset = ["trading-activity", "pair-age", "data-freshness", "spike-guard", "volume-liquidity-sanity"];
+    const broken = rules.map((r) =>
+      r.ruleId === "liquidity-depth" ? { ...r, verdict: "fail" as const } : r,
+    );
+    expect(deriveOutcome(broken, subset)).toBe("REJECT");
+  });
 });

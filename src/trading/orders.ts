@@ -158,6 +158,11 @@ export class OrderStore {
     return this.orders.size;
   }
 
+  /** All orders (for persistence snapshots). Returns live references. */
+  allOrders(): readonly OrderRecord[] {
+    return [...this.orders.values()];
+  }
+
   getOrder(id: string): OrderRecord | undefined {
     return this.orders.get(id);
   }

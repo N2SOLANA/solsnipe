@@ -256,9 +256,16 @@ export class RiskEngine {
 
     // 7. Daily simulated-loss gate: blocks entries while the current UTC day
     //    is in breach. A new UTC day resets it (caller refreshes the
-    //    start-of-day reference).
-    const sameUtcDay =
-      Math.floor(input.nowMs / MS_PER_DAY) === Math.floor(input.startOfDayUtcMs / MS_PER_DAY);
+    //    start-of-day reference). Fail closed on a STALE reference: a
+    //    start-of-day older than yesterday cannot distinguish "new day,
+    //    legitimately reset" from "stale caller silently disabling the limit",
+    //    so it blocks.
+    const nowDay = Math.floor(input.nowMs / MS_PER_DAY);
+    const refDay = Math.floor(input.startOfDayUtcMs / MS_PER_DAY);
+    if (refDay < nowDay - 1) {
+      block("stale-start-of-day");
+    }
+    const sameUtcDay = refDay === nowDay;
     if (
       sameUtcDay &&
       input.startOfDayEquityLamports > 0n &&

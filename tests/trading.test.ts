@@ -121,6 +121,16 @@ describe("risk engine", () => {
     expect(nextDay.allowed).toBe(true);
   });
 
+  it("fails closed on a stale start-of-day reference (M5)", () => {
+    // Reference two days old: indistinguishable from a stale caller silently
+    // disabling the daily-loss limit → must block, even with no loss.
+    const stale = new RiskEngine().check(
+      baseInput({ nowMs: 4 * DAY + 1_000, startOfDayUtcMs: 2 * DAY }),
+    );
+    expect(stale.reasons).toContain("stale-start-of-day");
+    expect(stale.allowed).toBe(false);
+  });
+
   it("blocks entries past 20% drawdown", () => {
     const d = new RiskEngine().check(baseInput({ currentEquityLamports: 7_900_000_000n }));
     expect(d.reasons).toContain("drawdown-breach");
