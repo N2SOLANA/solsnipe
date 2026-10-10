@@ -1,0 +1,5 @@
+# Normalize line endings macOS <-> Windows (§25)
+* text=auto eol=lf
+*.sqlite binary
+*.sqlite3 binary
+*.db binary

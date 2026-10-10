@@ -1,0 +1,30 @@
+{
+  "name": "solsnipe",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Solana memecoin intelligence & paper-trading terminal (PAPER-ONLY)",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "node scripts/lint.mjs",
+    "test": "vitest run",
+    "safety-scan": "node scripts/safety-scan.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "verify": "npm run typecheck && npm run lint && npm run build && npm run test && npm run safety-scan && npm run e2e",
+    "recorder:start": "node scripts/recorder-lifecycle.mjs start",
+    "recorder:stop": "node scripts/recorder-lifecycle.mjs stop"
+  },
+  "dependencies": {
+    "decimal.js": "10.6.0",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "typescript": "5.9.2",
+    "vitest": "3.2.4"
+  }
+}
