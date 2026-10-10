@@ -2,9 +2,9 @@
 # Full spec: docs/MASTER_PROMPT.md. Rules: CLAUDE.md.
 
 ## Current milestone
-M1 Foundation — COMPLETE (2026-10-10). `npm run verify` fully green.
-M2 Market data + recorder — IMPLEMENTED (2026-10-10), verify green; recorder
-start pending (step 4 of this run).
+M3 Scanner + risk + M4 paper trading + dashboard scaffold — COMPLETE
+(2026-10-11). `npm run verify` fully green (85/85). Recorder RUNNING.
+Next: M5 adversarial verification, M6 backtest replay.
 
 ## Implemented
 - Probe: Dexscreener search + tokens endpoints, Solana RPC health, Jupiter Lite
@@ -79,4 +79,16 @@ start pending (step 4 of this run).
 3. M2: commit + start recorder detached, confirm rows growing (this run, step 4)
 
 ## Recorder status
-Not built yet. Target: start during M2 ASAP.
+RUNNING since 2026-10-10 20:28 UTC (pid 26882, detached, logs/recorder.log).
+3750+ observations, 125+ heartbeats, 0 gaps (verified 2026-10-11 ~04:00 UTC,
+30 rows/20s growth, heartbeat age 2.8s). Watchlist: WSOL/BONK/WIF/TRUMP.
+DB: data/snapshots.sqlite (gitignored runtime artifact).
+M3/M4 additions this run: scanner (rules+scanner, 6 tests), risk checks
+(8 checks, 5 tests), BaselineV1 strategy, risk engine + orders + execution +
+ledger (36 tests), EXECUTION_MODEL.md, dashboard views/render/snapshot
+(5 tests), vertical slice test (fixture→scan→decide→order→fill→ledger→
+reconcile→idempotent replay, PASS), dashboard:snapshot script rendering
+live DB to dashboard/snapshot.html with PAPER badge.
+Verify 2026-10-11: 85/85 tests (9 files), safety-scan clean (29 files),
+e2e PASS. NOTE: e2e.mjs is still the M1 skeleton (self-check + migrate
+smoke) — the vertical slice lives in tests/vertical.test.ts, not in e2e.

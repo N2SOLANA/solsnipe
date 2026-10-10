@@ -17,7 +17,8 @@
     "verify": "npm run typecheck && npm run lint && npm run build && npm run test && npm run safety-scan && npm run e2e",
     "recorder:start": "node scripts/recorder-lifecycle.mjs start",
     "recorder:stop": "node scripts/recorder-lifecycle.mjs stop",
-    "recorder:status": "node scripts/recorder-lifecycle.mjs status"
+    "recorder:status": "node scripts/recorder-lifecycle.mjs status",
+    "dashboard:snapshot": "node dist/dashboard/snapshot.js"
   },
   "dependencies": {
     "decimal.js": "10.6.0",
