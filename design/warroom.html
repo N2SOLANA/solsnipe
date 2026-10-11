@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SOLSNIPE War Room v2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+:root{--bg:#090b0f;--pn:#0f131a;--ln:#1d2530;--tx:#d6dde6;--dm:#6f7d8f;--g:#39ff88;--r:#ff4d5e;--o:#ff9f43;--m:#e040fb;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:12px/1.4 'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+body:after{content:"";position:fixed;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.16) 0 1px,transparent 1px 3px)}
+.px{font-family:'Press Start 2P',ui-monospace,monospace;font-size:9px}
+.band{border-bottom:5px solid var(--m);position:relative}
+.chip{border:2px solid var(--ln);padding:1px 7px;font-size:10px;color:var(--dm)}.chip.g{color:var(--g);border-color:var(--g)}.chip.o{color:var(--o);border-color:var(--o)}.chip.m{color:var(--m);border-color:var(--m)}
+.ok{color:var(--g)}.bad{color:var(--r)}.rev{color:var(--o)}.unk{color:var(--dm)}.dim{color:var(--dm)}
+/* band1 */
+.b1{height:170px;overflow:hidden}.b1 svg{position:absolute;inset:0;width:100%;height:100%}
+.bal{position:absolute;right:20px;top:26px;text-align:left}.bal small{display:block;color:var(--dm);letter-spacing:2px;font-size:10px}.bal b{font-size:28px;color:var(--g)}
+.tag{position:absolute;left:12px;top:8px;display:flex;gap:8px;align-items:center}
+/* band2 */
+.bh{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:2px solid var(--ln)}
+.b2g{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);height:380px}
+.lf{border-right:2px solid var(--ln);display:flex;flex-direction:column;min-width:0}
+.st{display:grid;grid-template-columns:repeat(6,1fr);border-bottom:2px solid var(--ln)}.st div{padding:6px 10px;border-right:1px solid var(--ln)}.st small{display:block;color:var(--dm);font-size:9px}.st b{font-size:13px}
+.cw{position:relative;flex:1;min-height:0;background:#070a0e}.cw>svg{position:absolute;inset:0;width:100%;height:100%}
+.ov{position:absolute;left:12px;top:12px;background:#0b1017ee;border:2px solid var(--ln);width:220px;z-index:2}
+.ov div{display:flex;justify-content:space-between;padding:3px 8px;border-bottom:1px solid var(--ln);font-size:10px}.ov div:last-child{border:0}
+.rt{display:flex;flex-direction:column;min-height:0}.rt input{background:#070a0e;border:0;border-bottom:2px solid var(--ln);color:var(--tx);padding:7px 10px;font:inherit;outline:0}
+.sc{flex:1;overflow:auto}table{width:100%;border-collapse:collapse}td{padding:4px 8px;border-bottom:1px solid #151b24;white-space:nowrap;font-size:11px}td.n{text-align:right}
+tr.row{cursor:pointer}tr.row:hover td{background:#141b25}tr.sel td{background:#1a2230}tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--m)}
+.strip{display:flex;gap:6px;padding:8px;overflow-x:auto;border-top:2px solid var(--ln);background:#070a0e}
+.mc{flex:0 0 120px;border:1px solid var(--ln);padding:5px 7px;font-size:10px}.mc i{display:block;border-top:1px dashed var(--ln);margin:6px 0 2px}.mc small{color:var(--dm);font-size:9px}
+/* band3 */
+.b3{border-bottom:0;background:#0a0f16}.tk{padding:8px 12px;color:var(--g);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#scene{display:block;width:100%;height:auto}
+@media(max-width:900px){.b2g{grid-template-columns:1fr;height:auto}.lf{height:340px}.rt{height:300px}.st{grid-template-columns:repeat(3,1fr)}}
+</style></head><body>
+<section class="band b1"><svg id="line" viewBox="0 0 1000 170" preserveAspectRatio="none"></svg>
+ <div class="tag px"><span style="color:var(--m)">SOLSNIPE // EQUITY</span><span class="chip g">PAPER</span><span class="chip o">SAMPLE CURVE</span></div>
+ <div class="bal"><small>PAPER BALANCE</small><b>10.0000 SOL</b><small>START CAPITAL · NO TRADES YET</small></div></section>
+
+<section class="band"><div class="bh"><span class="px" style="color:var(--m)">DEV · ANALYSIS</span><span style="display:flex;gap:8px"><span class="chip o">SAMPLE CANDLES</span><span class="chip g">REAL ROWS</span><span class="px ok" id="cnt"></span></span></div>
+ <div class="b2g"><div class="lf"><div class="st" id="st"></div>
+  <div class="cw"><svg id="chart" viewBox="0 0 600 300" preserveAspectRatio="none"></svg><div class="ov px" id="ov"></div></div></div>
+  <div class="rt"><input id="q" placeholder="search mint…"><div class="sc"><table><tbody id="tb"></tbody></table></div></div></div>
+ <div class="strip" id="strip"></div></section>
+
+<section class="band b3"><div class="tk px" id="tk"></div><svg id="scene" viewBox="0 0 1000 440" shape-rendering="crispEdges"></svg></section>
+<script>
+const D=[["6p6xgH…GiPN",1.89,11676227.71,1062538.98,"630d"],["6p6xgH…GiPN",1.90,930919.93,28055.14,"430d"],["6p6xgH…GiPN",1.89,10537527.8,275747.54,"630d"],
+["DezXAZ…B263",0.000003414,262530.96,179769.16,"450d"],["DezXAZ…B263",0.000003410,219911,13254.44,"192d"],["DezXAZ…B263",0.000003405,37610.49,307.8,"1383d"],
+["DezXAZ…B263",0.000003435,202.91,0.78,"2h"],["DezXAZ…B263",0.000008151,12243.85,0,"795d"],["EKpQGS…zcjm",0.2205,19938.49,404.34,"814d"],
+["EKpQGS…zcjm",0.2175,12115.45,1331.8,"1035d"],["So1111…1112",110.21,7792784.16,11037857.51,"786d"],["So1111…1112",110.14,24943116.76,3650148.23,"1412d"]];
+const $=i=>document.getElementById(i),med=m=>{const a=D.filter(r=>r[0]==m).map(r=>r[1]).sort((x,y)=>x-y);return a[a.length>>1]};
+D.forEach(r=>{const md=med(r[0]);r.out=Math.abs(r[1]-md)/md>.25;r.s=r.out?"REVIEW":r[2]<40000?"REJECT":"ACCEPT";r.why=r.out?"price outlier":r[2]<40000?"liquidity depth":"initial screen"});
+const f=v=>v<1?v.toFixed(9).replace(/0+$/,""):v.toLocaleString("en-US",{maximumFractionDigits:2}),sh=v=>v>=1e6?(v/1e6).toFixed(1)+"M":v>=1e3?(v/1e3).toFixed(1)+"K":v.toFixed(0);
+const cls={ACCEPT:"ok",REJECT:"bad",REVIEW:"rev"};let sel=3,qv="";
+const acc=D.filter(r=>r.s=="ACCEPT").length,rev=D.filter(r=>r.s=="REVIEW").length,rej=D.filter(r=>r.s=="REJECT").length;
+$("cnt").textContent=String(D.length).padStart(3,"0")+" SCANNED";
+$("tk").textContent=`PAPER · PAIRS ${D.length} · ACCEPT ${acc} · REVIEW ${rev} · REJECT ${rej} · ORDERS 0 · SNAPSHOT 2026-10-10 22:25Z`;
+function tbl(){$("tb").innerHTML=D.map((r,i)=>[r,i]).filter(o=>o[0][0].toLowerCase().includes(qv)).map(([r,i])=>`<tr class="row ${i==sel?"sel":""}" data-i="${i}"><td class="dim">${String(i+1).padStart(3,"0")}</td><td><b>${r[0]}</b></td><td class="n dim">$${sh(r[2])}</td><td class="dim">${r.why}</td><td class="${cls[r.s]}">${r.s}</td></tr>`).join("")}
+function pick(){const r=D[sel];
+ $("st").innerHTML=[["PRICE","$"+f(r[1])],["LIQUIDITY","$"+sh(r[2])],["VOL 24H","$"+sh(r[3])],["PAIR AGE",r[4]],["VOL/LIQ",(r[3]/r[2]).toFixed(3)],["SCREEN",`<span class="${cls[r.s]}">${r.s}</span>`]].map(x=>`<div><small>${x[0]}</small><b>${x[1]}</b></div>`).join("");
+ const c=[["liquidity depth",r[2]>=40000?"PASS":"FAIL"],["price consistency",r.out?"FAIL":"PASS"],["mint authority","UNKNOWN"],["freeze authority","UNKNOWN"],["holder spread","N/S"],["exit quote","N/S"]];
+ $("ov").innerHTML=c.map(x=>`<div><span>${x[0]}</span><b class="${x[1]=="PASS"?"ok":x[1]=="FAIL"?"bad":"unk"}">${x[1]}</b></div>`).join("");tbl();scene()}
+$("tb").onclick=e=>{const t=e.target.closest("tr");if(t){sel=+t.dataset.i;pick()}};$("q").oninput=e=>{qv=e.target.value.toLowerCase();tbl()};
+$("strip").innerHTML=D.map(r=>`<div class="mc"><b>${r[0]}</b><br>$${f(r[1])}<i></i><small>no history yet</small></div>`).join("");
+// sample curves (labeled SAMPLE)
+let seed=11;const rnd=()=>(seed=seed*16807%2147483647)/2147483647;
+{let v=50,p=[];for(let i=0;i<70;i++){v+=(rnd()-.4)*8;p.push((i*1000/69).toFixed(0)+","+(150-Math.max(8,Math.min(110,v))).toFixed(0))}
+$("line").innerHTML=`<defs><linearGradient id="a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#39ff88" stop-opacity=".35"/><stop offset="1" stop-color="#39ff88" stop-opacity="0"/></linearGradient></defs><polygon points="0,170 ${p.join(" ")} 1000,170" fill="url(#a)"/><polyline points="${p.join(" ")}" fill="none" stroke="#39ff88" stroke-width="2" vector-effect="non-scaling-stroke"/>`}
+let cd="",pr=150;for(let i=0;i<60;i++){const o=pr,c=pr+(rnd()-.5)*22,h=Math.max(o,c)+rnd()*9,l=Math.min(o,c)-rnd()*9;pr=Math.max(60,Math.min(250,c));const x=i*10+8,k=c>=o?"#39ff88":"#ff7a3d";cd+=`<line x1="${x}" x2="${x}" y1="${300-h}" y2="${300-l}" stroke="${k}"/><rect x="${x-3}" y="${300-Math.max(o,c)}" width="6" height="${Math.max(1.5,Math.abs(c-o))}" fill="${k}"/>`}
+let gl="";for(let i=1;i<6;i++)gl+=`<line x1="0" x2="600" y1="${i*50}" y2="${i*50}" stroke="#141b25"/>`;
+$("chart").innerHTML=gl+cd+`<line x1="0" x2="600" y1="${300-pr}" y2="${300-pr}" stroke="#e040fb" stroke-opacity=".6"/>`;
+// pixel sprites
+const spr=(rows,pal,x,y,s)=>rows.map((r,j)=>[...r].map((ch,i)=>pal[ch]?`<rect x="${x+i*s}" y="${y+j*s}" width="${s}" height="${s}" fill="${pal[ch]}"/>`:"").join("")).join("");
+const DESK=["..kkkkkkkkkkkk..","..kssssssssssk..","..kssssssssssk..","..kssssssssssk..","..kssssssssssk..","..kkkkkkkkkkkk..",".....kkkkkk.....","..dddddddddddd..",".dddddddddddddd.",".d.d........d.d.",".d.d........d.d."];
+const PLANT=["..g..g..",".gggggg.","gg.gg.gg",".gggggg.","..gggg..","...gg...","..pppp..","..pppp..","...pp..."];
+const ROCK=["..ww..",".wwww.",".wbbw.",".wwww.",".wwww.","wwwwww","w.rr.w","..rr..","..oo.."];
+const DISH=[".cccccc.","cccccccc","cccggccc",".cccgcc.","..ccgc..","...gg...","..gggg.."];
+const SRV=[];for(let i=0;i<6;i++){SRV.push("kkkkkkkk","kgkkkkgk")}
+const GH=[".XXXXXX.","XXXXXXXX","XWXXXWXX","XXXXXXXX","XXXXXXXX","XXXXXXXX","XX.XX.XX","X..XX..X"];
+const PD={k:"#2a3544",s:"#05080c",d:"#1c2430"};
+const gh=(c,x,y,s)=>spr(GH,{X:c,W:"#fff"},x,y,s);
+function scene(){const r=D[sel];let s=`<rect width="1000" height="440" fill="#0a0f16"/>`;
+ for(let i=0;i<9;i++)s+=`<line x1="0" x2="1000" y1="${250+i*24}" y2="${250+i*24}" stroke="#101722"/>`;
+ // logo + banners
+ s+=`<rect x="24" y="24" width="124" height="124" fill="#111823" stroke="#2a3544" stroke-width="3"/><text x="86" y="82" fill="#39ff88" font-size="20" text-anchor="middle" class="px">SOL</text><text x="86" y="110" fill="#39ff88" font-size="14" text-anchor="middle" class="px">SNIPE</text><text x="86" y="135" fill="#e040fb" font-size="9" text-anchor="middle" class="px">PAPER</text>`;
+ for(const bx of [172,780])s+=`<polygon points="${bx},60 ${bx+50},60 ${bx+50},140 ${bx+25},158 ${bx},140" fill="#131b27" stroke="#2a3544" stroke-width="3"/><text x="${bx+25}" y="108" fill="#39ff88" font-size="12" text-anchor="middle" class="px">S</text>`;
+ // wall monitor
+ s+=`<rect x="250" y="20" width="500" height="214" fill="#05080c" stroke="#2a3544" stroke-width="5"/><text x="262" y="40" fill="#d6dde6" font-size="11" class="px">${r[0]}</text><text x="262" y="58" fill="#6f7d8f" font-size="10" font-family="JetBrains Mono,monospace">PRICE $${f(r[1])}   LIQ $${sh(r[2])}   VOL24H $${sh(r[3])}   AGE ${r[4]}</text><svg x="256" y="66" width="488" height="160" viewBox="0 0 600 300" preserveAspectRatio="none">${$("chart").innerHTML}</svg>`;
+ s+=`<text x="500" y="250" fill="#6f7d8f" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">SAMPLE CANDLES · REAL HEADER</text>`;
+ // ticker badges
+ [["6p6x","#39ff88"],["DezX","#ff9f43"],["EKpQ","#e040fb"],["So11","#4aa3ff"]].forEach((t,i)=>{s+=`<circle cx="${790+i*50}" cy="40" r="20" fill="#05080c" stroke="${t[1]}" stroke-width="3"/><text x="${790+i*50}" y="44" fill="${t[1]}" font-size="8" text-anchor="middle" class="px">${t[0]}</text>`});
+ // clock + mandate
+ s+=`<rect x="830" y="100" width="90" height="46" fill="#05080c" stroke="#2a3544" stroke-width="3"/><text id="ck" x="875" y="128" fill="#39ff88" font-size="13" text-anchor="middle" class="px">--:--</text><text x="875" y="141" fill="#6f7d8f" font-size="7" text-anchor="middle" class="px">UTC</text>`;
+ s+=`<rect x="900" y="160" width="92" height="84" fill="#05080c" stroke="#2a3544" stroke-width="3"/>`+["MANDATE","PAPER ONLY","FAIL-CLOSED","UNKNOWN","≠ PASS"].map((t,i)=>`<text x="906" y="${178+i*14}" fill="${i?"#39ff88":"#e040fb"}" font-size="8" class="px">${t}</text>`).join("");
+ // desks 3x2
+ const top=D.reduce((a,b)=>b[3]>a[3]?b:a);
+ const S=[["PRICE",D.length+" pairs","#ff4d5e"],["RISK",(rev+rej)+" flagged","#ffffff"],["WIRE","dexscreener","#ff9f43"],["SIZE","0 orders","#4ce08a"],["PNL","— (no trades)","#e040fb"],["TAPE",acc+" accepted","#4aa3ff"]];
+ S.forEach((t,i)=>{const x=250+(i%3)*150,y=i<3?272:352;s+=spr(DESK,PD,x,y,5)+`<text x="${x+38}" y="${y-5}" fill="#6f7d8f" font-size="8" text-anchor="middle" class="px">${t[0]}</text><text x="${x+40}" y="${y+22}" fill="${t[2]}" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace" font-weight="700">${t[1]}</text>`+gh(t[2],x+66,y+26,3)});
+ // head of floor
+ s+=spr(DESK,PD,770,300,6)+gh("#ffffff",800,262,4)+`<text x="816" y="388" fill="#e040fb" font-size="8" text-anchor="middle" class="px">HEAD OF THE FLOOR</text>`;
+ // rocket / dish / server / plants / crate
+ s+=spr(ROCK,{w:"#dfe6ee",b:"#4aa3ff",r:"#ff4d5e",o:"#ff9f43"},690,300,5)+`<rect x="660" y="352" width="96" height="30" fill="#05080c" stroke="#2a3544" stroke-width="2"/><text x="708" y="364" fill="#6f7d8f" font-size="7" text-anchor="middle" class="px">TOP RUNNER</text><text x="708" y="376" fill="#39ff88" font-size="9" text-anchor="middle" font-family="JetBrains Mono,monospace">${top[0]}</text>`;
+ s+=spr(DISH,{c:"#aab4c2",g:"#6f7d8f"},890,330,5)+`<text x="910" y="388" fill="#6f7d8f" font-size="7" text-anchor="middle" class="px">WHALE RADAR</text><text x="910" y="402" fill="#6f7d8f" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">not wired</text>`;
+ s+=spr(SRV,{k:"#1c2430",g:"#39ff88"},960,296,4);
+ [[200,200],[740,236],[190,360],[870,262]].forEach(p=>s+=spr(PLANT,{g:"#2f9e5a",p:"#6b4a2f"},p[0],p[1],5));
+ s+=`<rect x="30" y="330" width="110" height="64" fill="#111823" stroke="#2a3544" stroke-width="3"/><text x="85" y="356" fill="#d6dde6" font-size="9" text-anchor="middle" class="px">PAPER</text><text x="85" y="372" fill="#d6dde6" font-size="9" text-anchor="middle" class="px">HANDS</text><text x="85" y="388" fill="#6f7d8f" font-size="8" text-anchor="middle" font-family="JetBrains Mono,monospace">0 closed trades</text>`;
+ $("scene").innerHTML=s;clk()}
+function clk(){const e=document.getElementById("ck");if(e)e.textContent=new Date().toISOString().slice(11,16)}
+setInterval(clk,5000);pick();
+</script></body></html>

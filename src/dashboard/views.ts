@@ -11,6 +11,9 @@ import type { DatabaseSync } from "node:sqlite";
 import { Decimal } from "decimal.js";
 import { EXECUTION_MODE } from "../safety/executionMode.js";
 import type { SelfCheckResult } from "../safety/selfCheck.js";
+import { scanObservation } from "../scanner/scanner.js";
+import { runRiskChecks } from "../risk/checks.js";
+import type { NormalizedObservation } from "../providers/types.js";
 
 /** §5.5 default: scanner data older than this is STALE (overridable via config). */
 export const DEFAULT_STALE_AFTER_MS = 90_000;
@@ -166,9 +169,20 @@ export interface MarketHistoryPoint {
   priceUsd: string;
 }
 
+export interface CandidateView {
+  mint: string;
+  pairAddress: string;
+  dexId: string;
+  outcome: string;
+  explanation: string;
+  rules: { ruleId: string; verdict: string; observedValue: string | null; threshold: string }[];
+  risk: { checkId: string; status: string }[];
+}
+
 export interface DashboardView {
   generatedAt: number;
   scanner: ScannerView;
+  candidates: CandidateView[];
   health: HealthView;
   activity: ActivityView;
   portfolio: PortfolioPanel;
@@ -565,6 +579,72 @@ export function readMarketHistory(db: DatabaseSync, limit = 2000): MarketHistory
   ).all(limit) as unknown as MarketHistoryPoint[];
 }
 
+/** Candidate verdicts computed by the real scanner + risk pipeline over the
+ * latest observation per pair (bounded to 60 pairs for snapshot cost). */
+export function buildCandidates(db: DatabaseSync, nowMs: number): CandidateView[] {
+  const latest = db.prepare(
+    `SELECT o.* FROM observations o JOIN (
+       SELECT pair_address AS pa, MAX(observed_at) AS m FROM observations GROUP BY pair_address
+     ) l ON l.pa = o.pair_address AND l.m = o.observed_at
+     ORDER BY o.observed_at DESC LIMIT 60`,
+  ).all() as Record<string, unknown>[];
+  const out: CandidateView[] = [];
+  for (const r of latest) {
+    const get = (k: string): string | null => (typeof r[k] === "string" ? (r[k] as string) : null);
+    const getNum = (k: string): number | null => (typeof r[k] === "number" ? (r[k] as number) : null);
+    const obs: NormalizedObservation = {
+      mint: String(r["mint"] ?? ""),
+      pairAddress: String(r["pair_address"] ?? ""),
+      dexId: String(r["dex_id"] ?? ""),
+      chainId: String(r["chain_id"] ?? ""),
+      quoteMint: get("quote_mint"),
+      priceUsd: get("price_usd"),
+      priceNative: get("price_native"),
+      liquidityUsd: get("liquidity_usd"),
+      liquidityBase: get("liquidity_base"),
+      liquidityQuote: get("liquidity_quote"),
+      volumeH24: get("volume_h24"),
+      volumeH6: get("volume_h6"),
+      volumeH1: get("volume_h1"),
+      volumeM5: get("volume_m5"),
+      txnsH24Buys: getNum("txns_h24_buys"),
+      txnsH24Sells: getNum("txns_h24_sells"),
+      priceChangeH24: get("price_change_h24"),
+      marketCap: get("market_cap"),
+      fdv: get("fdv"),
+      pairCreatedAt: getNum("pair_created_at"),
+      observedAt: getNum("observed_at") ?? 0,
+      source: String(r["source"] ?? ""),
+      latencyMs: getNum("latency_ms") ?? 0,
+      rawHash: String(r["raw_hash"] ?? ""),
+      validationNotes: [],
+    };
+    if (obs.mint === "" || obs.pairAddress === "") continue;
+    let scan;
+    try {
+      scan = scanObservation(obs, { nowMs });
+    } catch {
+      continue;
+    }
+    let riskStatuses: { checkId: string; status: string }[];
+    try {
+      riskStatuses = runRiskChecks(obs, nowMs).checks.map((c) => ({ checkId: c.checkId, status: c.status }));
+    } catch {
+      riskStatuses = [];
+    }
+    out.push({
+      mint: obs.mint,
+      pairAddress: obs.pairAddress,
+      dexId: obs.dexId,
+      outcome: scan.outcome,
+      explanation: scan.explanation,
+      rules: scan.rules.map((x) => ({ ruleId: x.ruleId, verdict: x.verdict, observedValue: x.observedValue, threshold: x.threshold })),
+      risk: riskStatuses,
+    });
+  }
+  return out;
+}
+
 export function buildDashboard(db: DatabaseSync, opts: BuildOptions): DashboardView {
   const scannerLimit = opts.scannerLimit ?? SCANNER_LIMIT_DEFAULT;
   const activityLimit = opts.activityLimit ?? ACTIVITY_LIMIT_DEFAULT;
@@ -572,6 +652,7 @@ export function buildDashboard(db: DatabaseSync, opts: BuildOptions): DashboardV
   return {
     generatedAt: opts.nowMs,
     scanner: buildScannerView(rows, countPairs(db), readSources(db), opts.nowMs, opts.staleAfterMs),
+    candidates: buildCandidates(db, opts.nowMs),
     health: buildHealthView(
       readLastHeartbeat(db),
       readLastObservationTs(db),
@@ -631,6 +712,7 @@ export function emptyDashboard(
       heartbeats: [],
       note: reason,
     },
+    candidates: [],
     portfolio: buildPortfolioView(),
     performance: buildPerformanceView(),
     marketHistory: [],
