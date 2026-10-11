@@ -31,6 +31,64 @@ export const MIGRATIONS: Migration[] = [
     `,
   },
   {
+    version: 2,
+    name: "paper_trading",
+    sql: `
+      -- Simulated orders. idempotency_key UNIQUE is the binding duplicate
+      -- guard across restarts (§15.3); the in-memory seen-set is not enough.
+      -- Money: lamports/bigint as TEXT (lossless round-trip, no float).
+      CREATE TABLE IF NOT EXISTS sim_orders (
+        id TEXT PRIMARY KEY,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        side TEXT NOT NULL CHECK (side IN ('BUY','SELL')),
+        state TEXT NOT NULL,
+        mint TEXT NOT NULL,
+        pair_address TEXT NOT NULL,
+        notional_lamports TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS sim_order_transitions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id TEXT NOT NULL REFERENCES sim_orders(id),
+        from_state TEXT NOT NULL,
+        to_state TEXT NOT NULL,
+        at_ms INTEGER NOT NULL,
+        reason TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_sim_transitions_order
+        ON sim_order_transitions (order_id);
+      -- Append-only ledger journal (average-cost, §15.2). amount/price as
+      -- TEXT: bigint lamports and decimal strings, never REAL.
+      CREATE TABLE IF NOT EXISTS sim_ledger_entries (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        at_ms INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        token TEXT NOT NULL,
+        amount TEXT NOT NULL,
+        price TEXT,
+        detail TEXT NOT NULL
+      );
+      -- Positions snapshot (derived from the journal; rebuilt on restart).
+      -- qty/cost as TEXT bigints. One row per token; deleted when flat.
+      CREATE TABLE IF NOT EXISTS sim_positions (
+        token TEXT PRIMARY KEY,
+        qty_base_units TEXT NOT NULL,
+        cost_basis_lamports TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      -- Portfolio cash + metadata. Single row (id=1). Cash as TEXT bigint.
+      CREATE TABLE IF NOT EXISTS sim_portfolio (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        start_lamports TEXT NOT NULL,
+        cash_lamports TEXT NOT NULL,
+        realized_pnl_lamports TEXT NOT NULL DEFAULT '0',
+        cumulative_buy_fee_lamports TEXT NOT NULL DEFAULT '0',
+        emergency_stop INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      );
+    `,
+  },
+  {
     version: 3,
     name: "paper_trader_daemon",
     sql: `
